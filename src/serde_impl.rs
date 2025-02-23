@@ -1,4 +1,4 @@
-use crate::{backend::Backend, StringInterner, Symbol};
+use crate::{StringInterner, Symbol};
 use alloc::boxed::Box;
 use core::{default::Default, fmt, hash::BuildHasher, marker};
 use serde::{
@@ -6,13 +6,7 @@ use serde::{
     ser::{Serialize, SerializeSeq, Serializer},
 };
 
-impl<B, H> Serialize for StringInterner<B, H>
-where
-    B: Backend,
-    <B as Backend>::Symbol: Symbol,
-    for<'a> &'a B: IntoIterator<Item = (<B as Backend>::Symbol, &'a str)>,
-    H: BuildHasher,
-{
+impl<S: Symbol, H: BuildHasher> Serialize for StringInterner<S, H> {
     fn serialize<T>(&self, serializer: T) -> Result<T::Ok, T::Error>
     where
         T: Serializer,
@@ -25,13 +19,8 @@ where
     }
 }
 
-impl<'de, B, H> Deserialize<'de> for StringInterner<B, H>
-where
-    B: Backend,
-    <B as Backend>::Symbol: Symbol,
-    H: BuildHasher + Default,
-{
-    fn deserialize<D>(deserializer: D) -> Result<StringInterner<B, H>, D::Error>
+impl<'de, S: Symbol, H: BuildHasher + Default> Deserialize<'de> for StringInterner<S, H> {
+    fn deserialize<D>(deserializer: D) -> Result<StringInterner<S, H>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -39,21 +28,11 @@ where
     }
 }
 
-struct StringInternerVisitor<B, H>
-where
-    B: Backend,
-    <B as Backend>::Symbol: Symbol,
-    H: BuildHasher,
-{
-    mark: marker::PhantomData<(<B as Backend>::Symbol, B, H)>,
+struct StringInternerVisitor<S: Symbol, H: BuildHasher> {
+    mark: marker::PhantomData<(S, H)>,
 }
 
-impl<B, H> Default for StringInternerVisitor<B, H>
-where
-    B: Backend,
-    <B as Backend>::Symbol: Symbol,
-    H: BuildHasher,
-{
+impl<S: Symbol, H: BuildHasher> Default for StringInternerVisitor<S, H> {
     fn default() -> Self {
         StringInternerVisitor {
             mark: marker::PhantomData,
@@ -61,13 +40,8 @@ where
     }
 }
 
-impl<'de, B, H> Visitor<'de> for StringInternerVisitor<B, H>
-where
-    B: Backend,
-    <B as Backend>::Symbol: Symbol,
-    H: BuildHasher + Default,
-{
-    type Value = StringInterner<B, H>;
+impl<'de, S: Symbol, H: BuildHasher + Default> Visitor<'de> for StringInternerVisitor<S, H> {
+    type Value = StringInterner<S, H>;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Expected a contiguous sequence of strings.")
@@ -77,7 +51,7 @@ where
     where
         A: SeqAccess<'de>,
     {
-        let mut interner: StringInterner<B, H> =
+        let mut interner: StringInterner<S, H> =
             StringInterner::with_capacity_and_hasher(seq.size_hint().unwrap_or(0), H::default());
         while let Some(s) = seq.next_element::<Box<str>>()? {
             interner.get_or_intern(s);

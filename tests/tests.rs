@@ -1,7 +1,7 @@
 mod allocator;
 
 use allocator::TracingAllocator;
-use string_interner::{backend, DefaultHashBuilder, DefaultSymbol, Symbol};
+use string_interner::{DefaultHashBuilder, DefaultSymbol, Symbol};
 
 #[global_allocator]
 static ALLOCATOR: TracingAllocator = TracingAllocator::new();
@@ -20,41 +20,12 @@ where
 }
 
 /// Stats for the backend.
-pub trait BackendStats {
-    /// The expected minimum memory overhead for this string interner backend.
-    const MIN_OVERHEAD: f64;
-    /// The expected maximum memory overhead for this string interner backend.
-    const MAX_OVERHEAD: f64;
-    /// The amount of allocations per 1M words.
-    const MAX_ALLOCATIONS: usize;
-    /// The amount of deallocations per 1M words.
-    const MAX_DEALLOCATIONS: usize;
-    /// The name of the backend for debug display purpose.
-    const NAME: &'static str;
-}
-
-impl BackendStats for backend::BucketBackend<DefaultSymbol> {
-    const MIN_OVERHEAD: f64 = 2.2;
-    const MAX_OVERHEAD: f64 = 3.1;
-    const MAX_ALLOCATIONS: usize = 65;
-    const MAX_DEALLOCATIONS: usize = 42;
-    const NAME: &'static str = "BucketBackend";
-}
-
-impl BackendStats for backend::StringBackend<DefaultSymbol> {
-    const MIN_OVERHEAD: f64 = 1.7;
-    const MAX_OVERHEAD: f64 = 1.93;
-    const MAX_ALLOCATIONS: usize = 62;
-    const MAX_DEALLOCATIONS: usize = 59;
-    const NAME: &'static str = "StringBackend";
-}
-
-impl BackendStats for backend::BufferBackend<DefaultSymbol> {
-    const MIN_OVERHEAD: f64 = 1.35;
-    const MAX_OVERHEAD: f64 = 1.58;
-    const MAX_ALLOCATIONS: usize = 43;
-    const MAX_DEALLOCATIONS: usize = 41;
-    const NAME: &'static str = "BufferBackend";
+mod stats {
+    pub const MIN_OVERHEAD: f64 = 1.7;
+    pub const MAX_OVERHEAD: f64 = 1.93;
+    pub const MAX_ALLOCATIONS: usize = 62;
+    pub const MAX_DEALLOCATIONS: usize = 59;
+    pub const NAME: &'static str = "StringBackend";
 }
 
 /// Memory profiling stats.
@@ -68,9 +39,9 @@ pub struct ProfilingStats {
 }
 
 macro_rules! gen_tests_for_backend {
-    ( $backend:ty ) => {
+    () => {
         type StringInterner =
-            string_interner::StringInterner<$backend, DefaultHashBuilder>;
+            string_interner::StringInterner<DefaultSymbol, DefaultHashBuilder>;
 
         fn profile_memory_usage(words: &[String]) -> ProfilingStats {
             ALLOCATOR.reset();
@@ -128,7 +99,7 @@ macro_rules! gen_tests_for_backend {
             }).collect::<Vec<_>>();
 
             println!();
-            println!("Benchmark Memory Usage for {}", <$backend as BackendStats>::NAME);
+            println!("Benchmark Memory Usage for {}", stats::NAME);
             let mut min_overhead = None;
             let mut max_overhead = None;
             let mut max_allocations = None;
@@ -152,12 +123,12 @@ macro_rules! gen_tests_for_backend {
             }
             let actual_min_overhead = min_overhead.unwrap();
             let actual_max_overhead = max_overhead.unwrap();
-            let expect_min_overhead = <$backend as BackendStats>::MIN_OVERHEAD;
-            let expect_max_overhead = <$backend as BackendStats>::MAX_OVERHEAD;
+            let expect_min_overhead = stats::MIN_OVERHEAD;
+            let expect_max_overhead = stats::MAX_OVERHEAD;
             let actual_max_allocations = max_allocations.unwrap();
             let actual_max_deallocations = max_deallocations.unwrap();
-            let expect_max_allocations = <$backend as BackendStats>::MAX_ALLOCATIONS;
-            let expect_max_deallocations = <$backend as BackendStats>::MAX_DEALLOCATIONS;
+            let expect_max_allocations = stats::MAX_ALLOCATIONS;
+            let expect_max_deallocations = stats::MAX_DEALLOCATIONS;
 
             println!();
             println!("- % min overhead      = {:.02}%", actual_min_overhead * 100.0);
@@ -168,28 +139,28 @@ macro_rules! gen_tests_for_backend {
             assert!(
                 actual_min_overhead < expect_min_overhead,
                 "{} string interner backend minimum memory overhead is greater than expected. expected = {:?}, actual = {:?}",
-                <$backend as BackendStats>::NAME,
+                stats::NAME,
                 expect_min_overhead,
                 actual_min_overhead,
             );
             assert!(
                 actual_max_overhead < expect_max_overhead,
                 "{} string interner backend maximum memory overhead is greater than expected. expected = {:?}, actual = {:?}",
-                <$backend as BackendStats>::NAME,
+                stats::NAME,
                 expect_max_overhead,
                 actual_max_overhead,
             );
             assert_eq!(
                 actual_max_allocations, expect_max_allocations,
                 "{} string interner backend maximum amount of allocations is greater than expected. expected = {:?}, actual = {:?}",
-                <$backend as BackendStats>::NAME,
+                stats::NAME,
                 expect_max_allocations,
                 actual_max_allocations,
             );
             assert_eq!(
                 actual_max_deallocations, expect_max_deallocations,
                 "{} string interner backend maximum amount of deallocations is greater than expected. expected = {:?}, actual = {:?}",
-                <$backend as BackendStats>::NAME,
+                stats::NAME,
                 expect_max_deallocations,
                 actual_max_deallocations,
             );
@@ -254,26 +225,6 @@ macro_rules! gen_tests_for_backend {
                 cc,
                 "'cc' did not produce the same symbol",
             );
-            assert_eq!(interner.len(), 3);
-        }
-
-        #[test]
-        fn get_or_intern_static_works() {
-            let mut interner = StringInterner::new();
-            // Insert 3 unique strings:
-            let a = interner.get_or_intern_static("aa").to_usize();
-            let b = interner.get_or_intern_static("bb").to_usize();
-            let c = interner.get_or_intern_static("cc").to_usize();
-            // All symbols must be different from each other.
-            assert_ne!(a, b);
-            assert_ne!(b, c);
-            assert_ne!(c, a);
-            // The length of the string interner must be 3 at this point.
-            assert_eq!(interner.len(), 3);
-            // Insert the same 3 unique strings, yield the same symbols:
-            assert_eq!(interner.get_or_intern_static("aa").to_usize(), a);
-            assert_eq!(interner.get_or_intern_static("bb").to_usize(), b);
-            assert_eq!(interner.get_or_intern_static("cc").to_usize(), c);
             assert_eq!(interner.len(), 3);
         }
 
@@ -414,17 +365,5 @@ macro_rules! gen_tests_for_backend {
 mod bucket_backend {
     use super::*;
 
-    gen_tests_for_backend!(backend::BucketBackend<DefaultSymbol>);
-}
-
-mod string_backend {
-    use super::*;
-
-    gen_tests_for_backend!(backend::StringBackend<DefaultSymbol>);
-}
-
-mod buffer_backend {
-    use super::*;
-
-    gen_tests_for_backend!(backend::BufferBackend<DefaultSymbol>);
+    gen_tests_for_backend!();
 }

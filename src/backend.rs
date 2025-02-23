@@ -1,6 +1,3 @@
-#![cfg(feature = "backends")]
-
-use super::Backend;
 use crate::{symbol::expect_valid_symbol, DefaultSymbol, Symbol};
 use alloc::{string::String, vec::Vec};
 use core::{iter::Enumerate, marker::PhantomData, slice};
@@ -38,7 +35,7 @@ use core::{iter::Enumerate, marker::PhantomData, slice};
 /// | Contiguous  | **yes**  |
 /// | Iteration   | **good** |
 #[derive(Debug)]
-pub struct StringBackend<S = DefaultSymbol> {
+pub(crate) struct StringBackend<S = DefaultSymbol> {
     ends: Vec<usize>,
     buffer: String,
     marker: PhantomData<fn() -> S>,
@@ -46,7 +43,7 @@ pub struct StringBackend<S = DefaultSymbol> {
 
 /// Represents a `[from, to)` index into the `StringBackend` buffer.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Span {
+struct Span {
     from: usize,
     to: usize,
 }
@@ -144,18 +141,12 @@ where
     }
 }
 
-impl<S> Backend for StringBackend<S>
+impl<S> StringBackend<S>
 where
     S: Symbol,
 {
-    type Symbol = S;
-    type Iter<'a>
-        = Iter<'a, S>
-    where
-        Self: 'a;
-
     #[cfg_attr(feature = "inline-more", inline)]
-    fn with_capacity(cap: usize) -> Self {
+    pub(crate) fn with_capacity(cap: usize) -> Self {
         // According to google the approx. word length is 5.
         let default_word_len = 5;
         Self {
@@ -166,30 +157,30 @@ where
     }
 
     #[inline]
-    fn intern(&mut self, string: &str) -> Self::Symbol {
+    pub(crate) fn intern(&mut self, string: &str) -> S {
         self.push_string(string)
     }
 
     #[inline]
-    fn resolve(&self, symbol: Self::Symbol) -> Option<&str> {
+    pub(crate) fn resolve(&self, symbol: S) -> Option<&str> {
         self.symbol_to_span(symbol)
             .map(|span| self.span_to_str(span))
     }
 
-    fn shrink_to_fit(&mut self) {
+    pub(crate) fn shrink_to_fit(&mut self) {
         self.ends.shrink_to_fit();
         self.buffer.shrink_to_fit();
     }
 
     #[inline]
-    unsafe fn resolve_unchecked(&self, symbol: Self::Symbol) -> &str {
+    pub(crate) unsafe fn resolve_unchecked(&self, symbol: S) -> &str {
         // SAFETY: The function is marked unsafe so that the caller guarantees
         //         that required invariants are checked.
         unsafe { self.span_to_str(self.symbol_to_span_unchecked(symbol)) }
     }
 
     #[inline]
-    fn iter(&self) -> Self::Iter<'_> {
+    pub(crate) fn iter(&self) -> Iter<'_, S> {
         Iter::new(self)
     }
 }
@@ -215,7 +206,7 @@ pub struct Iter<'a, S> {
 
 impl<'a, S> Iter<'a, S> {
     #[cfg_attr(feature = "inline-more", inline)]
-    pub fn new(backend: &'a StringBackend<S>) -> Self {
+    fn new(backend: &'a StringBackend<S>) -> Self {
         Self {
             backend,
             start: 0,

@@ -27,7 +27,7 @@ name = "bench"
 harness = false
 
 [features]
-default = ["std", "serde", "inline-more", "backends"]
+default = ["std", "serde", "inline-more"]
 std = ["serde?/std"]
 
 # Enable this if you need `Serde` serialization and deserialization support.
@@ -41,13 +41,6 @@ serde = ["dep:serde"]
 #
 # Enabled by default.
 inline-more = ["hashbrown/inline-more"]
-
-# Enables the backends provided out of the box by this crate.
-# Disable this if you want to only use your own backend and thus don't have
-# the need for those present backends. Reduces compilation time of this crate.
-#
-# Enabled by default.
-backends = []
 
 # Enables testing of memory heap allocations.
 #

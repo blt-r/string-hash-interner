@@ -1,8 +1,4 @@
-use string_interner::{
-    backend::{Backend, BucketBackend, BufferBackend, StringBackend},
-    DefaultSymbol,
-    StringInterner,
-};
+use string_interner::{DefaultSymbol, StringInterner};
 
 /// Alphabet containing all characters that may be put into a benchmark string.
 const ALPHABET: [u8; 64] = [
@@ -79,31 +75,25 @@ pub const BENCH_LEN_STRINGS: usize = 100_000;
 pub const BENCH_STRING_LEN: usize = 5;
 
 type FxBuildHasher = fxhash::FxBuildHasher;
-type StringInternerWith<B> = StringInterner<B, FxBuildHasher>;
+type StringInternerWith = StringInterner<DefaultSymbol, FxBuildHasher>;
 
 pub trait BackendBenchmark {
     const NAME: &'static str;
-    type Backend: Backend;
 
-    fn setup() -> StringInternerWith<Self::Backend> {
-        <StringInternerWith<Self::Backend>>::new()
+    fn setup() -> StringInternerWith {
+        StringInternerWith::new()
     }
 
-    fn setup_with_capacity(cap: usize) -> StringInternerWith<Self::Backend> {
-        <StringInternerWith<Self::Backend>>::with_capacity(cap)
+    fn setup_with_capacity(cap: usize) -> StringInternerWith {
+        StringInternerWith::with_capacity(cap)
     }
 
-    fn setup_filled(words: &[String]) -> StringInternerWith<Self::Backend> {
-        words.iter().collect::<StringInternerWith<Self::Backend>>()
+    fn setup_filled(words: &[String]) -> StringInternerWith {
+        words.iter().collect::<StringInternerWith>()
     }
 
-    fn setup_filled_with_ids(
-        words: &[String],
-    ) -> (
-        StringInternerWith<Self::Backend>,
-        Vec<<Self::Backend as Backend>::Symbol>,
-    ) {
-        let mut interner = <StringInternerWith<Self::Backend>>::new();
+    fn setup_filled_with_ids(words: &[String]) -> (StringInternerWith, Vec<DefaultSymbol>) {
+        let mut interner = StringInternerWith::new();
         let word_ids = words
             .iter()
             .map(|word| interner.get_or_intern(word))
@@ -112,20 +102,7 @@ pub trait BackendBenchmark {
     }
 }
 
-pub struct BenchBucket;
-impl BackendBenchmark for BenchBucket {
-    const NAME: &'static str = "BucketBackend";
-    type Backend = BucketBackend<DefaultSymbol>;
-}
-
 pub struct BenchString;
 impl BackendBenchmark for BenchString {
     const NAME: &'static str = "StringBackend";
-    type Backend = StringBackend<DefaultSymbol>;
-}
-
-pub struct BenchBuffer;
-impl BackendBenchmark for BenchBuffer {
-    const NAME: &'static str = "BufferBackend";
-    type Backend = BufferBackend<DefaultSymbol>;
 }

@@ -25,10 +25,10 @@ impl WordBuilder {
 
     /// Fills the internal buffer with the next unique word indices.
     fn next_indices(&mut self) -> Option<&[u8]> {
-        'l: for index in &mut self.indices {
+        for index in &mut self.indices {
             if *index == (64 - 1) {
                 *index = 0;
-                continue 'l;
+                continue;
             }
             *index += 1;
             return Some(&self.indices[..]);

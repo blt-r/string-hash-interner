@@ -174,8 +174,7 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
                 vacant.insert_with_hasher(hash, symbol, (), |symbol| {
                     // SAFETY: This is safe because we only operate on symbols that
                     //         we receive from our backend making them valid.
-                    let string = unsafe { backend.resolve_unchecked(*symbol) };
-                    make_hash(hasher, string)
+                    unsafe { backend.get_hash_unchecked(*symbol) }
                 })
             }
         };

@@ -11,10 +11,7 @@ use core::{
 use hashbrown::{DefaultHashBuilder, HashMap};
 
 /// Creates the `u64` hash value for the given value using the given hash builder.
-fn make_hash<T>(builder: &impl BuildHasher, value: &T) -> u64
-where
-    T: ?Sized + Hash,
-{
+fn make_hash(builder: &impl BuildHasher, value: &str) -> u64 {
     let state = &mut builder.build_hasher();
     value.hash(state);
     state.finish()
@@ -27,7 +24,7 @@ where
 ///
 /// The following API covers the main functionality:
 ///
-/// - [`StringInterner::get_or_intern`]: To intern a new string.
+/// - [`StringInterner::intern`]: To intern a new string.
 ///     - This maps from `string` type to `symbol` type.
 /// - [`StringInterner::resolve`]: To resolve your already interned strings.
 ///     - This maps from `symbol` type to `string` type.
@@ -64,12 +61,6 @@ impl<S: Symbol, H: Clone> Clone for StringInterner<S, H> {
             hasher: self.hasher.clone(),
             backend: self.backend.clone(),
         }
-    }
-}
-
-impl<S: Symbol, H: BuildHasher> PartialEq for StringInterner<S, H> {
-    fn eq(&self, rhs: &Self) -> bool {
-        self.len() == rhs.len() && self.backend == rhs.backend
     }
 }
 
@@ -155,25 +146,21 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
 
     /// Interns the given string.
     ///
-    /// This is used as backend by [`get_or_intern`][1] and [`get_or_intern_static`][2].
+    /// Returns a symbol for resolution into the original string, and its hash.
     ///
-    /// [1]: [`StringInterner::get_or_intern`]
-    /// [2]: [`StringInterner::get_or_intern_static`]
-    #[cfg_attr(feature = "inline-more", inline)]
-    fn get_or_intern_using<T>(
-        &mut self,
-        string: T,
-        intern_fn: fn(&mut StringBackend<S>, T) -> S,
-    ) -> S
-    where
-        T: Copy + Hash + AsRef<str> + for<'a> PartialEq<&'a str>,
-    {
+    /// # Panics
+    ///
+    /// If the interner already interns the maximum number of strings possible
+    /// by the chosen symbol type.
+    #[inline]
+    pub fn intern_and_hash<T: AsRef<str>>(&mut self, string: T) -> (S, u64) {
+        let string = string.as_ref();
         let Self {
             dedup,
             hasher,
             backend,
         } = self;
-        let hash = make_hash(hasher, string.as_ref());
+        let hash = make_hash(hasher, string);
         let entry = dedup.raw_entry_mut().from_hash(hash, |symbol| {
             // SAFETY: This is safe because we only operate on symbols that
             //         we receive from our backend making them valid.
@@ -183,7 +170,7 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
         let (&mut symbol, &mut ()) = match entry {
             RawEntryMut::Occupied(occupied) => occupied.into_key_value(),
             RawEntryMut::Vacant(vacant) => {
-                let symbol = intern_fn(backend, string);
+                let symbol = backend.intern(string, hash);
                 vacant.insert_with_hasher(hash, symbol, (), |symbol| {
                     // SAFETY: This is safe because we only operate on symbols that
                     //         we receive from our backend making them valid.
@@ -192,7 +179,7 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
                 })
             }
         };
-        symbol
+        (symbol, hash)
     }
 
     /// Interns the given string.
@@ -204,11 +191,8 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
     /// If the interner already interns the maximum number of strings possible
     /// by the chosen symbol type.
     #[inline]
-    pub fn get_or_intern<T>(&mut self, string: T) -> S
-    where
-        T: AsRef<str>,
-    {
-        self.get_or_intern_using(string.as_ref(), StringBackend::<S>::intern)
+    pub fn intern<T: AsRef<str>>(&mut self, string: T) -> S {
+        self.intern_and_hash(string).0
     }
 
     /// Shrink backend capacity to fit the interned strings exactly.
@@ -222,6 +206,11 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
         self.backend.resolve(symbol)
     }
 
+    /// Returns cached hash of the string for the given `symbol`.
+    pub fn get_hash(&self, symbol: S) -> Option<u64> {
+        self.backend.get_hash(symbol)
+    }
+
     /// Returns the string for the given `symbol` without performing any checks.
     ///
     /// # Safety
@@ -231,6 +220,18 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
     #[inline]
     pub unsafe fn resolve_unchecked(&self, symbol: S) -> &str {
         unsafe { self.backend.resolve_unchecked(symbol) }
+    }
+
+    /// Returns cached hash of the string for the given `symbol` without performing any checks.
+    ///
+    /// # Safety
+    ///
+    /// It is the caller's responsibility to provide this method with `symbol`s
+    /// that are valid for the [`StringInterner`].
+    pub unsafe fn get_hash_unchecked(&self, symbol: S) -> u64 {
+        // SAFETY: The function is marked unsafe so that the caller guarantees
+        //         that required invariants are checked.
+        unsafe { self.backend.get_hash_unchecked(symbol) }
     }
 
     /// Returns an iterator that yields all interned strings and their symbols.
@@ -259,7 +260,7 @@ impl<S: Symbol, H: BuildHasher + Default, T: AsRef<str>> Extend<T> for StringInt
         I: IntoIterator<Item = T>,
     {
         for s in iter {
-            self.get_or_intern(s.as_ref());
+            self.intern_and_hash(s.as_ref());
         }
     }
 }

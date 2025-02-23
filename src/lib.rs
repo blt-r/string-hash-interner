@@ -12,10 +12,10 @@
 //! use string_interner::DefaultStringInterner;
 //!
 //! let mut interner = DefaultStringInterner::default();
-//! let sym0 = interner.get_or_intern("Elephant");
-//! let sym1 = interner.get_or_intern("Tiger");
-//! let sym2 = interner.get_or_intern("Horse");
-//! let sym3 = interner.get_or_intern("Tiger");
+//! let sym0 = interner.intern("Elephant");
+//! let sym1 = interner.intern("Tiger");
+//! let sym2 = interner.intern("Horse");
+//! let sym3 = interner.intern("Tiger");
 //! assert_ne!(sym0, sym1);
 //! assert_ne!(sym0, sym2);
 //! assert_ne!(sym1, sym2);
@@ -36,7 +36,7 @@
 //! ```
 //! # use string_interner::DefaultStringInterner;
 //! let mut interner = DefaultStringInterner::default();
-//! let sym = interner.get_or_intern("Banana");
+//! let sym = interner.intern("Banana");
 //! assert_eq!(interner.resolve(sym), Some("Banana"));
 //! ```
 //!
@@ -57,7 +57,7 @@
 //! use string_interner::symbol::SymbolU16;
 //! use fxhash::FxBuildHasher;
 //! let mut interner = StringInterner::<SymbolU16, FxBuildHasher>::new();
-//! let sym = interner.get_or_intern("Fire Fox");
+//! let sym = interner.intern("Fire Fox");
 //! assert_eq!(interner.resolve(sym), Some("Fire Fox"));
 //! assert_eq!(size_of_val(&sym), 2);
 //! ```

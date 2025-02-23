@@ -9,34 +9,10 @@ use core::{iter::Enumerate, marker::PhantomData, slice};
 /// Implementation inspired by [CAD97's](https://github.com/CAD97) research
 /// project [`strena`](https://github.com/CAD97/strena).
 ///
-/// # Usage Hint
-///
-/// Use this backend if runtime performance is what matters most to you.
-///
-/// # Usage
-///
-/// - **Fill:** Efficiency of filling an empty string interner.
-/// - **Resolve:** Efficiency of interned string look-up given a symbol.
-/// - **Allocations:** The number of allocations performed by the backend.
-/// - **Footprint:** The total heap memory consumed by the backend.
-/// - **Contiguous:** True if the returned symbols have contiguous values.
-/// - **Iteration:** Efficiency of iterating over the interned strings.
-///
-/// Rating varies between **bad**, **ok**, **good** and **best**.
-///
-/// | Scenario    |  Rating  |
-/// |:------------|:--------:|
-/// | Fill        | **good** |
-/// | Resolve     | **ok**   |
-/// | Allocations | **good** |
-/// | Footprint   | **good** |
-/// | Supports `get_or_intern_static` | **no** |
-/// | `Send` + `Sync` | **yes** |
-/// | Contiguous  | **yes**  |
-/// | Iteration   | **good** |
 #[derive(Debug)]
 pub(crate) struct StringBackend<S = DefaultSymbol> {
-    ends: Vec<usize>,
+    /// Stores end of the string and it's hash
+    ends: Vec<(usize, u64)>,
     buffer: String,
     marker: PhantomData<fn() -> S>,
 }
@@ -47,25 +23,6 @@ struct Span {
     from: usize,
     to: usize,
 }
-
-impl<S> PartialEq for StringBackend<S>
-where
-    S: Symbol,
-{
-    fn eq(&self, other: &Self) -> bool {
-        if self.ends.len() != other.ends.len() {
-            return false;
-        }
-        for ((_, lhs), (_, rhs)) in self.into_iter().zip(other) {
-            if lhs != rhs {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-impl<S> Eq for StringBackend<S> where S: Symbol {}
 
 impl<S> Clone for StringBackend<S> {
     fn clone(&self) -> Self {
@@ -98,53 +55,14 @@ where
     }
 
     /// Returns the string associated to the span.
-    fn span_to_str(&self, span: Span) -> &str {
-        // SAFETY: - We convert a `String` into its underlying bytes and then
-        //           directly reinterpret it as `&str` again which is safe.
-        //         - Nothing mutates the string in between since this is a `&self`
-        //           method.
-        //         - The spans we use for `(start..end]` ranges are always
-        //           constructed in accordance to valid utf8 byte ranges.
+    ///
+    /// # Safety
+    ///
+    /// Span must be valid withing the [Self::buffer]
+    unsafe fn span_to_str(&self, span: Span) -> &str {
         unsafe { core::str::from_utf8_unchecked(&self.buffer.as_bytes()[span.from..span.to]) }
     }
 
-    /// Returns the span for the given symbol if any.
-    fn symbol_to_span(&self, symbol: S) -> Option<Span> {
-        let index = symbol.to_usize();
-        self.ends.get(index).copied().map(|to| {
-            let from = self.ends.get(index.wrapping_sub(1)).copied().unwrap_or(0);
-            Span { from, to }
-        })
-    }
-
-    /// Returns the span for the given symbol if any.
-    unsafe fn symbol_to_span_unchecked(&self, symbol: S) -> Span {
-        let index = symbol.to_usize();
-        // SAFETY: The function is marked unsafe so that the caller guarantees
-        //         that required invariants are checked.
-        let to = unsafe { *self.ends.get_unchecked(index) };
-        let from = self.ends.get(index.wrapping_sub(1)).copied().unwrap_or(0);
-        Span { from, to }
-    }
-
-    /// Pushes the given string into the buffer and returns its span.
-    ///
-    /// # Panics
-    ///
-    /// If the backend ran out of symbols.
-    fn push_string(&mut self, string: &str) -> S {
-        self.buffer.push_str(string);
-        let to = self.buffer.len();
-        let symbol = self.next_symbol();
-        self.ends.push(to);
-        symbol
-    }
-}
-
-impl<S> StringBackend<S>
-where
-    S: Symbol,
-{
     #[cfg_attr(feature = "inline-more", inline)]
     pub(crate) fn with_capacity(cap: usize) -> Self {
         // According to google the approx. word length is 5.
@@ -157,14 +75,27 @@ where
     }
 
     #[inline]
-    pub(crate) fn intern(&mut self, string: &str) -> S {
-        self.push_string(string)
+    pub(crate) fn intern(&mut self, string: &str, hash: u64) -> S {
+        self.buffer.push_str(string);
+        let to = self.buffer.len();
+        let symbol = self.next_symbol();
+        self.ends.push((to, hash));
+        symbol
     }
 
     #[inline]
     pub(crate) fn resolve(&self, symbol: S) -> Option<&str> {
-        self.symbol_to_span(symbol)
-            .map(|span| self.span_to_str(span))
+        let index = symbol.to_usize();
+        let to = self.ends.get(index)?.0;
+
+        let from = self
+            .ends
+            .get(index.wrapping_sub(1))
+            .map(|&(end, _)| end)
+            .unwrap_or(0);
+
+        // SAFETY: This span is guaranteed to be valid
+        unsafe { Some(self.span_to_str(Span { from, to })) }
     }
 
     pub(crate) fn shrink_to_fit(&mut self) {
@@ -174,9 +105,28 @@ where
 
     #[inline]
     pub(crate) unsafe fn resolve_unchecked(&self, symbol: S) -> &str {
+        let index = symbol.to_usize();
         // SAFETY: The function is marked unsafe so that the caller guarantees
         //         that required invariants are checked.
-        unsafe { self.span_to_str(self.symbol_to_span_unchecked(symbol)) }
+        let to = unsafe { self.ends.get_unchecked(index).0 };
+        let from = self
+            .ends
+            .get(index.wrapping_sub(1))
+            .map(|&(end, _)| end)
+            .unwrap_or(0);
+
+        // SAFETY: This span is guaranteed to be valid
+        unsafe { self.span_to_str(Span { from, to }) }
+    }
+
+    pub fn get_hash(&self, symbol: S) -> Option<u64> {
+        self.ends.get(symbol.to_usize()).map(|&(_, hash)| hash)
+    }
+
+    pub unsafe fn get_hash_unchecked(&self, symbol: S) -> u64 {
+        // SAFETY: The function is marked unsafe so that the caller guarantees
+        //         that required invariants are checked.
+        unsafe { self.ends.get_unchecked(symbol.to_usize()).1 }
     }
 
     #[inline]
@@ -198,19 +148,57 @@ where
     }
 }
 
-pub struct Iter<'a, S> {
+/// An iterator over the interned symbols, their strings, and their hashes.
+pub struct IterWithHashes<'a, S> {
     backend: &'a StringBackend<S>,
     start: usize,
-    ends: Enumerate<slice::Iter<'a, usize>>,
+    ends: Enumerate<slice::Iter<'a, (usize, u64)>>,
 }
 
-impl<'a, S> Iter<'a, S> {
+impl<'a, S> IterWithHashes<'a, S> {
     #[cfg_attr(feature = "inline-more", inline)]
     fn new(backend: &'a StringBackend<S>) -> Self {
         Self {
             backend,
             start: 0,
             ends: backend.ends.iter().enumerate(),
+        }
+    }
+}
+
+impl<'a, S> Iterator for IterWithHashes<'a, S>
+where
+    S: Symbol,
+{
+    type Item = (S, &'a str, u64);
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.ends.size_hint()
+    }
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let (id, &(to, hash)) = self.ends.next()?;
+        let from = core::mem::replace(&mut self.start, to);
+
+        // SAFETY: This span is guaranteed to be valid
+        let string = unsafe { self.backend.span_to_str(Span { from, to }) };
+
+        Some((expect_valid_symbol(id), string, hash))
+    }
+}
+
+/// An iterator over the interned symbols and their strings
+pub struct Iter<'a, S> {
+    inner: IterWithHashes<'a, S>,
+}
+
+impl<'a, S> Iter<'a, S> {
+    #[cfg_attr(feature = "inline-more", inline)]
+    fn new(backend: &'a StringBackend<S>) -> Self {
+        Self {
+            inner: IterWithHashes::new(backend),
         }
     }
 }
@@ -223,17 +211,12 @@ where
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.ends.size_hint()
+        self.inner.size_hint()
     }
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.ends.next().map(|(id, &to)| {
-            let from = core::mem::replace(&mut self.start, to);
-            (
-                expect_valid_symbol(id),
-                self.backend.span_to_str(Span { from, to }),
-            )
-        })
+        let (sym, s, _hash) = self.inner.next()?;
+        Some((sym, s))
     }
 }

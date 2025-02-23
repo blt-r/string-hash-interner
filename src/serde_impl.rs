@@ -54,7 +54,7 @@ impl<'de, S: Symbol, H: BuildHasher + Default> Visitor<'de> for StringInternerVi
         let mut interner: StringInterner<S, H> =
             StringInterner::with_capacity_and_hasher(seq.size_hint().unwrap_or(0), H::default());
         while let Some(s) = seq.next_element::<Box<str>>()? {
-            interner.get_or_intern(s);
+            interner.intern_and_hash(s);
         }
         Ok(interner)
     }

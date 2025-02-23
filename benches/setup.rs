@@ -96,7 +96,7 @@ pub trait BackendBenchmark {
         let mut interner = StringInternerWith::new();
         let word_ids = words
             .iter()
-            .map(|word| interner.get_or_intern(word))
+            .map(|word| interner.intern_and_hash(word).0)
             .collect::<Vec<_>>();
         (interner, word_ids)
     }

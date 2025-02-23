@@ -1,6 +1,9 @@
 mod allocator;
 
+use std::hash::{BuildHasher, Hash, Hasher};
+
 use allocator::TracingAllocator;
+use fxhash::{FxBuildHasher, FxHasher};
 use string_interner::{DefaultHashBuilder, DefaultSymbol, Symbol};
 
 #[global_allocator]
@@ -385,4 +388,45 @@ fn shrink_to_fit_works() {
         "'cc' did not produce the same symbol",
     );
     assert_eq!(interner.len(), 3);
+}
+
+#[test]
+fn hashes_are_correct() {
+    fn make_hash(build_hasher: impl BuildHasher, s: &str) -> u64 {
+        let mut hasher = build_hasher.build_hasher();
+        s.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    let hash_builder = DefaultHashBuilder::default();
+    let mut interner = StringInterner::with_hasher(hash_builder);
+
+    for s in ["aa", "bb", "cc", "dd", "ee", "ff"].iter().copied() {
+        let expected_hash = make_hash(hash_builder, s);
+        let (sym, hash) = interner.intern_and_hash(s);
+        assert_eq!(expected_hash, hash);
+        assert_eq!(expected_hash, interner.get_hash(sym).unwrap());
+        assert_eq!(expected_hash, unsafe { interner.get_hash_unchecked(sym) });
+    }
+}
+
+// FxHash isn't randomly seeded, so even with different [BuildHasher]'s the hashes should be the same.
+#[test]
+fn fxhashes_are_correct() {
+    fn make_fxhash(s: &str) -> u64 {
+        let mut hasher = FxHasher::default();
+        s.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    let mut interner: string_interner::StringInterner<DefaultSymbol, FxBuildHasher> =
+        Default::default();
+
+    for s in ["aa", "bb", "cc", "dd", "ee", "ff"].iter().copied() {
+        let expected_hash = make_fxhash(s);
+        let (sym, hash) = interner.intern_and_hash(s);
+        assert_eq!(expected_hash, hash);
+        assert_eq!(expected_hash, interner.get_hash(sym).unwrap());
+        assert_eq!(expected_hash, unsafe { interner.get_hash_unchecked(sym) });
+    }
 }

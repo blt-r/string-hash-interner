@@ -1,5 +1,5 @@
 use crate::{
-    backend::{Iter, StringBackend},
+    backend::{Iter, IterWithHashes, StringBackend},
     DefaultSymbol, Symbol,
 };
 use core::{
@@ -128,18 +128,14 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
         T: AsRef<str>,
     {
         let string = string.as_ref();
-        let Self {
-            dedup,
-            hasher,
-            backend,
-        } = self;
-        let hash = make_hash(hasher, string);
-        dedup
+
+        let hash = make_hash(&self.hasher, string);
+        self.dedup
             .raw_entry()
             .from_hash(hash, |symbol| {
                 // SAFETY: This is safe because we only operate on symbols that
                 //         we receive from our backend making them valid.
-                string == unsafe { backend.resolve_unchecked(*symbol) }
+                string == unsafe { self.backend.resolve_unchecked(*symbol) }
             })
             .map(|(&symbol, &())| symbol)
     }
@@ -155,26 +151,22 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
     #[inline]
     pub fn intern_and_hash<T: AsRef<str>>(&mut self, string: T) -> (S, u64) {
         let string = string.as_ref();
-        let Self {
-            dedup,
-            hasher,
-            backend,
-        } = self;
-        let hash = make_hash(hasher, string);
-        let entry = dedup.raw_entry_mut().from_hash(hash, |symbol| {
+
+        let hash = make_hash(&self.hasher, string);
+        let entry = self.dedup.raw_entry_mut().from_hash(hash, |symbol| {
             // SAFETY: This is safe because we only operate on symbols that
             //         we receive from our backend making them valid.
-            string == unsafe { backend.resolve_unchecked(*symbol) }
+            string == unsafe { self.backend.resolve_unchecked(*symbol) }
         });
         use hashbrown::hash_map::RawEntryMut;
         let (&mut symbol, &mut ()) = match entry {
             RawEntryMut::Occupied(occupied) => occupied.into_key_value(),
             RawEntryMut::Vacant(vacant) => {
-                let symbol = backend.intern(string, hash);
+                let symbol = self.backend.intern(string, hash);
                 vacant.insert_with_hasher(hash, symbol, (), |symbol| {
                     // SAFETY: This is safe because we only operate on symbols that
                     //         we receive from our backend making them valid.
-                    unsafe { backend.get_hash_unchecked(*symbol) }
+                    unsafe { self.backend.get_hash_unchecked(*symbol) }
                 })
             }
         };
@@ -231,6 +223,12 @@ impl<S: Symbol, H: BuildHasher> StringInterner<S, H> {
         // SAFETY: The function is marked unsafe so that the caller guarantees
         //         that required invariants are checked.
         unsafe { self.backend.get_hash_unchecked(symbol) }
+    }
+
+    /// Returns an iterator that yields all interned strings, their symbols, and hashes.
+    #[inline]
+    pub fn iter_with_hashes(&self) -> IterWithHashes<'_, S> {
+        self.backend.iter_with_hashes()
     }
 
     /// Returns an iterator that yields all interned strings and their symbols.

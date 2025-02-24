@@ -353,10 +353,7 @@ fn iter_works() {
 
     let symbols = strings
         .iter()
-        .map(|&s| {
-            let sym = interner.intern(s);
-            (sym, s)
-        })
+        .map(|&s| (interner.intern(s), s))
         .collect::<Vec<_>>();
 
     assert!(Iterator::eq(symbols.into_iter(), &interner));
@@ -469,4 +466,25 @@ fn manual_hashmap() {
         assert_eq!(k.as_ref(), strings[*v]);
         assert_eq!(*v, i);
     }
+}
+
+#[test]
+fn iter_with_hashes() {
+    let strings = ["aa", "bb", "cc", "dd", "ee", "ff"];
+    let build_hasher = DefaultHashBuilder::default();
+
+    let mut interner = StringInterner::with_hasher(build_hasher);
+
+    let make_hash = |s: &str| {
+        let mut hasher = build_hasher.build_hasher();
+        s.hash(&mut hasher);
+        hasher.finish()
+    };
+
+    let expected = strings
+        .iter()
+        .map(|&s| (interner.intern(s), s, make_hash(s)))
+        .collect::<Vec<_>>();
+
+    assert!(Iterator::eq(interner.iter_with_hashes(), expected));
 }

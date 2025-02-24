@@ -133,6 +133,11 @@ where
     pub(crate) fn iter(&self) -> Iter<'_, S> {
         Iter::new(self)
     }
+
+    #[inline]
+    pub(crate) fn iter_with_hashes(&self) -> IterWithHashes<'_, S> {
+        IterWithHashes::new(self)
+    }
 }
 
 impl<'a, S> IntoIterator for &'a StringBackend<S>

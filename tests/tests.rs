@@ -41,7 +41,7 @@ pub struct ProfilingStats {
     pub deallocations: usize,
 }
 
-type StringInterner = string_interner::StringInterner<DefaultSymbol, DefaultHashBuilder>;
+type StringInterner = string_interner::DefaultStringInterner;
 
 fn profile_memory_usage(words: &[String]) -> ProfilingStats {
     ALLOCATOR.reset();
@@ -99,8 +99,7 @@ fn profile_memory_usage(words: &[String]) -> ProfilingStats {
 #[cfg_attr(any(miri, not(feature = "test-allocations")), ignore)]
 fn test_memory_consumption() {
     let len_words = 1_000_000;
-    let words = (0..)
-        .take(len_words)
+    let words = (0..len_words)
         .map(|i| format!("{:20}", i))
         .collect::<Vec<_>>();
 
@@ -430,7 +429,8 @@ fn correct_fxhashes() {
 
 #[test]
 fn manual_hashmap() {
-    let strings = (1..1000).map(|n| format!("string {n}")).collect::<Vec<_>>();
+    // Force at least one rehashing
+    let strings = (0..512).map(|n| format!("string {n}")).collect::<Vec<_>>();
 
     let build_hasher = DefaultHashBuilder::default();
 
@@ -487,4 +487,83 @@ fn iter_with_hashes() {
         .collect::<Vec<_>>();
 
     assert!(Iterator::eq(interner.iter_with_hashes(), expected));
+}
+
+mod different_strings {
+    use std::{
+        borrow::Borrow,
+        ffi::{CStr, CString, OsStr},
+        hash::{BuildHasher, Hasher},
+    };
+
+    use hashbrown::DefaultHashBuilder;
+    use string_interner::{Intern, Interner};
+
+    trait TestString: Intern + ToOwned + AsRef<Self> {
+        fn make(s: &str) -> Self::Owned;
+
+        fn data(data: impl IntoIterator<Item = &'static str>) -> Vec<Self::Owned> {
+            data.into_iter().map(Self::make).collect()
+        }
+    }
+
+    impl TestString for str {
+        fn make(s: &str) -> Self::Owned {
+            s.to_owned()
+        }
+    }
+
+    impl TestString for CStr {
+        fn make(s: &str) -> Self::Owned {
+            CString::new(s).unwrap()
+        }
+    }
+
+    impl TestString for OsStr {
+        fn make(s: &str) -> Self::Owned {
+            From::from(s)
+        }
+    }
+
+    impl TestString for [u8] {
+        fn make(s: &str) -> Self::Owned {
+            s.as_bytes().to_vec()
+        }
+    }
+
+    impl TestString for [char] {
+        fn make(s: &str) -> Self::Owned {
+            s.chars().collect()
+        }
+    }
+
+    fn general_test<I: TestString + ?Sized>() {
+        let strings = I::data(["aa", "bb", "cc", "dd", "ee", "ff"]);
+
+        let build_hasher = DefaultHashBuilder::default();
+        let make_hash = |s: &I| {
+            let mut hasher = build_hasher.build_hasher();
+            s.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        let mut interner = Interner::<I>::with_hasher(build_hasher);
+
+        let expected = strings
+            .iter()
+            .map(Borrow::borrow)
+            .map(|s| (interner.intern(s), s, make_hash(s)))
+            .collect::<Vec<_>>();
+
+        assert!(Iterator::eq(interner.iter_with_hashes(), expected));
+    }
+
+    #[test]
+    fn all_string_types() {
+        general_test::<str>();
+        general_test::<CStr>();
+        general_test::<OsStr>();
+        general_test::<[u8]>();
+        general_test::<[char]>();
+    }
 }

@@ -1,6 +1,6 @@
-use crate::{symbol::expect_valid_symbol, DefaultSymbol, Symbol};
-use alloc::{string::String, vec::Vec};
-use core::{iter::Enumerate, marker::PhantomData, slice};
+use crate::{intern::Intern, symbol::expect_valid_symbol, Symbol};
+use alloc::vec::Vec;
+use core::{fmt::Debug, iter::Enumerate, marker::PhantomData, slice};
 
 /// An interner backend that accumulates all interned string contents into one string.
 ///
@@ -9,12 +9,20 @@ use core::{iter::Enumerate, marker::PhantomData, slice};
 /// Implementation inspired by [CAD97's](https://github.com/CAD97) research
 /// project [`strena`](https://github.com/CAD97/strena).
 ///
-#[derive(Debug)]
-pub(crate) struct StringBackend<S = DefaultSymbol> {
+pub(crate) struct StringBackend<I: Intern + ?Sized, S> {
     /// Stores end of the string and it's hash
     ends: Vec<(usize, u64)>,
-    buffer: String,
+    buffer: Vec<I::Primitive>,
     marker: PhantomData<fn() -> S>,
+}
+
+impl<I: Intern + ?Sized, S> Debug for StringBackend<I, S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("StringBackend")
+            .field("ends", &self.ends)
+            .field("buffer", &self.buffer)
+            .finish()
+    }
 }
 
 /// Represents a `[from, to)` index into the `StringBackend` buffer.
@@ -24,67 +32,62 @@ struct Span {
     to: usize,
 }
 
-impl<S> Clone for StringBackend<S> {
+impl<I: Intern + ?Sized, S> Clone for StringBackend<I, S> {
     fn clone(&self) -> Self {
         Self {
             ends: self.ends.clone(),
             buffer: self.buffer.clone(),
-            marker: Default::default(),
+            marker: PhantomData,
         }
     }
 }
 
-impl<S> Default for StringBackend<S> {
+impl<I: Intern + ?Sized, S> Default for StringBackend<I, S> {
     #[cfg_attr(feature = "inline-more", inline)]
     fn default() -> Self {
         Self {
             ends: Vec::default(),
-            buffer: String::default(),
-            marker: Default::default(),
+            buffer: Vec::default(),
+            marker: PhantomData,
         }
     }
 }
 
-impl<S> StringBackend<S>
-where
-    S: Symbol,
-{
-    /// Returns the next available symbol.
-    fn next_symbol(&self) -> S {
-        expect_valid_symbol(self.ends.len())
-    }
-
+impl<I: Intern + ?Sized, S: Symbol> StringBackend<I, S> {
     /// Returns the string associated to the span.
     ///
     /// # Safety
     ///
-    /// Span must be valid withing the [Self::buffer]
-    unsafe fn span_to_str(&self, span: Span) -> &str {
-        unsafe { core::str::from_utf8_unchecked(&self.buffer.as_bytes()[span.from..span.to]) }
+    /// Span must be valid within the [Self::buffer]
+    unsafe fn span_to_str(&self, span: Span) -> &I {
+        unsafe { I::from_bytes(&self.buffer[span.from..span.to]) }
     }
 
     #[cfg_attr(feature = "inline-more", inline)]
     pub(crate) fn with_capacity(cap: usize) -> Self {
-        // According to google the approx. word length is 5.
-        let default_word_len = 5;
+        // According to google the approx. word length is 5. So we will use 10.
+        const DEFAULT_WORD_LEN: usize = 10;
         Self {
             ends: Vec::with_capacity(cap),
-            buffer: String::with_capacity(cap * default_word_len),
-            marker: Default::default(),
+            buffer: Vec::with_capacity(cap * DEFAULT_WORD_LEN),
+            marker: PhantomData,
         }
     }
 
     #[inline]
-    pub(crate) fn intern(&mut self, string: &str, hash: u64) -> S {
-        self.buffer.push_str(string);
+    pub(crate) fn intern(&mut self, string: &I, hash: u64) -> S {
+        self.buffer.extend_from_slice(string.as_bytes());
         let to = self.buffer.len();
-        let symbol = self.next_symbol();
+        let symbol = {
+            let this = &self;
+            expect_valid_symbol(this.ends.len())
+        };
         self.ends.push((to, hash));
         symbol
     }
 
     #[inline]
-    pub(crate) fn resolve(&self, symbol: S) -> Option<&str> {
+    pub(crate) fn resolve(&self, symbol: S) -> Option<&I> {
         let index = symbol.to_usize();
         let to = self.ends.get(index)?.0;
 
@@ -104,7 +107,7 @@ where
     }
 
     #[inline]
-    pub(crate) unsafe fn resolve_unchecked(&self, symbol: S) -> &str {
+    pub(crate) unsafe fn resolve_unchecked(&self, symbol: S) -> &I {
         let index = symbol.to_usize();
         // SAFETY: The function is marked unsafe so that the caller guarantees
         //         that required invariants are checked.
@@ -130,22 +133,19 @@ where
     }
 
     #[inline]
-    pub(crate) fn iter(&self) -> Iter<'_, S> {
+    pub(crate) fn iter(&self) -> Iter<'_, I, S> {
         Iter::new(self)
     }
 
     #[inline]
-    pub(crate) fn iter_with_hashes(&self) -> IterWithHashes<'_, S> {
+    pub(crate) fn iter_with_hashes(&self) -> IterWithHashes<'_, I, S> {
         IterWithHashes::new(self)
     }
 }
 
-impl<'a, S> IntoIterator for &'a StringBackend<S>
-where
-    S: Symbol,
-{
-    type Item = (S, &'a str);
-    type IntoIter = Iter<'a, S>;
+impl<'a, I: Intern + ?Sized, S: Symbol> IntoIterator for &'a StringBackend<I, S> {
+    type Item = (S, &'a I);
+    type IntoIter = Iter<'a, I, S>;
 
     #[cfg_attr(feature = "inline-more", inline)]
     fn into_iter(self) -> Self::IntoIter {
@@ -154,15 +154,15 @@ where
 }
 
 /// An iterator over the interned symbols, their strings, and their hashes.
-pub struct IterWithHashes<'a, S> {
-    backend: &'a StringBackend<S>,
+pub struct IterWithHashes<'a, I: Intern + ?Sized, S> {
+    backend: &'a StringBackend<I, S>,
     start: usize,
     ends: Enumerate<slice::Iter<'a, (usize, u64)>>,
 }
 
-impl<'a, S> IterWithHashes<'a, S> {
+impl<'a, I: Intern + ?Sized, S> IterWithHashes<'a, I, S> {
     #[cfg_attr(feature = "inline-more", inline)]
-    fn new(backend: &'a StringBackend<S>) -> Self {
+    fn new(backend: &'a StringBackend<I, S>) -> Self {
         Self {
             backend,
             start: 0,
@@ -171,11 +171,8 @@ impl<'a, S> IterWithHashes<'a, S> {
     }
 }
 
-impl<'a, S> Iterator for IterWithHashes<'a, S>
-where
-    S: Symbol,
-{
-    type Item = (S, &'a str, u64);
+impl<'a, I: Intern + ?Sized, S: Symbol> Iterator for IterWithHashes<'a, I, S> {
+    type Item = (S, &'a I, u64);
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -195,24 +192,24 @@ where
 }
 
 /// An iterator over the interned symbols and their strings
-pub struct Iter<'a, S> {
-    inner: IterWithHashes<'a, S>,
+pub struct Iter<'a, I: Intern + ?Sized, S> {
+    inner: IterWithHashes<'a, I, S>,
 }
 
-impl<'a, S> Iter<'a, S> {
+impl<'a, I: Intern + ?Sized, S> Iter<'a, I, S> {
     #[cfg_attr(feature = "inline-more", inline)]
-    fn new(backend: &'a StringBackend<S>) -> Self {
+    fn new(backend: &'a StringBackend<I, S>) -> Self {
         Self {
             inner: IterWithHashes::new(backend),
         }
     }
 }
 
-impl<'a, S> Iterator for Iter<'a, S>
+impl<'a, I: Intern + ?Sized, S: Symbol> Iterator for Iter<'a, I, S>
 where
     S: Symbol,
 {
-    type Item = (S, &'a str);
+    type Item = (S, &'a I);
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {

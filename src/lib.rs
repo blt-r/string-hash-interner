@@ -71,18 +71,23 @@ extern crate std;
 mod serde_impl;
 
 mod backend;
+mod intern;
 mod interner;
 pub mod symbol;
 
 #[doc(inline)]
 pub use self::{
-    backend::Iter,
-    interner::StringInterner,
+    backend::{Iter, IterWithHashes},
+    intern::Intern,
+    interner::Interner,
     symbol::{DefaultSymbol, Symbol},
 };
 
-/// [StringInterner] with default Symbol and Hasher.
-pub type DefaultStringInterner = StringInterner;
-
 #[doc(inline)]
 pub use hashbrown::DefaultHashBuilder;
+
+/// [Interner] of [str]'s.
+pub type StringInterner<S = DefaultSymbol, H = DefaultHashBuilder> = Interner<str, S, H>;
+
+/// [StringInterner] with default Symbol and Hasher.
+pub type DefaultStringInterner = StringInterner;

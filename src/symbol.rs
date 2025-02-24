@@ -1,17 +1,17 @@
 //! Interfaces and types to be used as symbols for the
-//! [`StringInterner`](`crate::StringInterner`).
+//! [`Interner`](crate::Interner).
 //!
-//! The [`StringInterner::intern`](`crate::StringInterner::intern`)
-//! method returns `Symbol` types that allow to look-up the original string
-//! using [`StringInterner::resolve`](`crate::StringInterner::resolve`).
+//! The [`Interner::intern`](crate::Interner::intern)
+//! method returns [`Symbol`] types that allow to look-up the original string
+//! using [`Interner::resolve`](crate::Interner::resolve).
 
 use core::num::{NonZeroU16, NonZeroU32, NonZeroUsize};
 
 /// Types implementing this trait can be used as symbols for string interners.
 ///
-/// The [`StringInterner::intern`](`crate::StringInterner::intern`)
+/// The [`Interner::intern`](crate::Interner::intern)
 /// method returns `Symbol` types that allow to look-up the original string
-/// using [`StringInterner::resolve`](`crate::StringInterner::resolve`).
+/// using [`Interner::resolve`](crate::Interner::resolve).
 ///
 /// # Note
 ///

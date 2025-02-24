@@ -5,12 +5,12 @@ use core::{ffi::CStr, fmt::Debug, hash::Hash};
 /// # Safety
 ///
 /// It should be alwas valid to reinterpret bytes of `Self` as `&[Self::Primitive]`
-/// using [Intern::as_bytes].
+/// using [`Intern::as_bytes`].
 ///
-/// It should be valid to reinterpret bytes copied from [Intern::as_bytes].
-/// as `&Self` using [Intern::from_bytes]. Even if they were moved in memory.
+/// It should be valid to reinterpret bytes copied from [`Intern::as_bytes`].
+/// as `&Self` using [`Intern::from_bytes`]. Even if they were moved in memory.
 pub unsafe trait Intern: Hash + PartialEq + Eq {
-    /// A primitive type that has the same alignment as [Self].
+    /// A primitive type that has the same alignment as `Self`.
     type Primitive: Sized + Copy + Debug;
 
     fn as_bytes(&self) -> &[Self::Primitive];

@@ -50,7 +50,7 @@
 //! }
 //! ```
 //!
-//! ### Example: Use different symbols and hashers:
+//! ### Example: Use different symbols and hashers
 //!
 //! ```
 //! # use string_interner::StringInterner;
@@ -60,6 +60,85 @@
 //! let sym = interner.intern("Fire Fox");
 //! assert_eq!(interner.resolve(sym), Some("Fire Fox"));
 //! assert_eq!(size_of_val(&sym), 2);
+//! ```
+//!
+//! ### Example: Intern different types of strings
+//!
+//! ```
+//! use string_interner::Interner;
+//! use std::ffi::CStr;
+//!
+//! let strings = <Interner<CStr>>::from_iter([c"Earth", c"Water", c"Fire", c"Air"]);
+//!
+//! for (_sym, str) in &strings {
+//!     println!("This is a C string: {:?}", str);
+//! }
+//! ```
+//!
+//! ### Example: Use cached hashes for faster hashmap lookups
+//!
+//! ```
+//! # use string_interner::DefaultStringInterner;
+//! # use string_interner::DefaultHashBuilder;
+//! # use hashbrown::hash_map::RawEntryMut;
+//! // `DefaultHashBuilder` uses random state, so we need to use
+//! // the same instance in order for hashes to match.
+//! let build_hasher = DefaultHashBuilder::default();
+//!
+//! let mut hashmap = hashbrown::HashMap::with_hasher(build_hasher);
+//! hashmap.extend([("Earth", 1), ("Water", 2), ("Fire", 3), ("Air", 4)]);
+//!
+//! let mut interner = DefaultStringInterner::with_hasher(build_hasher);
+//! let sym = interner.intern("Water");
+//!
+//! // Now, if we need to lookup the entry in the hashmap and we
+//! // only have the symbol, we don't need to recompute the hash.
+//!
+//! let string = interner.resolve(sym).unwrap();
+//! let hash = interner.get_hash(sym).unwrap();
+//!
+//! let (k, v) = hashmap
+//!     .raw_entry()
+//!     .from_key_hashed_nocheck(hash, string)
+//!     .unwrap();
+//!
+//! assert_eq!(*k, "Water");
+//! assert_eq!(*v, 2)
+//! ```
+//!
+//! ### Example: Hashmap with only interned strings
+//!
+//! ```
+//! # use string_interner::symbol::DefaultSymbol;
+//! # use string_interner::DefaultStringInterner;
+//! # use hashbrown::hash_map::RawEntryMut;
+//! let mut interner = DefaultStringInterner::default();
+//!
+//! let symbols = ["Earth", "Water", "Fire", "Air", "Air", "Water"].map(|s| interner.intern(s));
+//!
+//! // Now, using symbols we can fill the hashmap without ever recomputing hashes.
+//!
+//! // Use `()` as a hasher, as we'll be using cached hashes.
+//! let mut counts = hashbrown::HashMap::<DefaultSymbol, usize, ()>::default();
+//!
+//! for symbol in symbols {
+//!     // SAFETY: we now these symbols are coming from this interner
+//!     let hash = unsafe { interner.get_hash_unchecked(symbol) };
+//!     let hasher = |sym: &DefaultSymbol| unsafe { interner.get_hash_unchecked(*sym) };
+//!
+//!     match counts.raw_entry_mut().from_key_hashed_nocheck(hash, &symbol) {
+//!         RawEntryMut::Occupied(mut entry) => {
+//!             *entry.get_mut() += 1;
+//!         }
+//!         RawEntryMut::Vacant(entry) => {
+//!             entry.insert_with_hasher(hash, symbol, 1, hasher);
+//!         }
+//!     }
+//! }
+//!
+//! for (sym, count) in &counts {
+//!     println!("{:?} appeared {} times", interner.resolve(*sym).unwrap(), count);
+//! }
 //! ```
 //!
 
@@ -86,8 +165,8 @@ pub use self::{
 #[doc(inline)]
 pub use hashbrown::DefaultHashBuilder;
 
-/// [Interner] of [str]'s.
+/// [`Interner`] for [`str`]'s.
 pub type StringInterner<S = DefaultSymbol, H = DefaultHashBuilder> = Interner<str, S, H>;
 
-/// [StringInterner] with default Symbol and Hasher.
+/// [`StringInterner`] with default Symbol and Hasher.
 pub type DefaultStringInterner = StringInterner;

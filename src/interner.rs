@@ -66,7 +66,7 @@ impl<I: Intern + ?Sized, S: Symbol, H: Clone> Clone for Interner<I, S, H> {
 }
 
 impl<I: Intern + ?Sized, S: Symbol, H: BuildHasher + Default> Interner<I, S, H> {
-    /// Creates a new empty [Interner].
+    /// Creates a new empty [`Interner`].
     #[cfg_attr(feature = "inline-more", inline)]
     pub fn new() -> Self {
         Self {
@@ -208,7 +208,7 @@ impl<I: Intern + ?Sized, S: Symbol, H: BuildHasher> Interner<I, S, H> {
     /// # Safety
     ///
     /// It is the caller's responsibility to provide this method with `symbol`s
-    /// that are valid for the [Interner].
+    /// that are valid for the [`Interner`].
     #[inline]
     pub unsafe fn resolve_unchecked(&self, symbol: S) -> &I {
         unsafe { self.backend.resolve_unchecked(symbol) }
@@ -219,7 +219,7 @@ impl<I: Intern + ?Sized, S: Symbol, H: BuildHasher> Interner<I, S, H> {
     /// # Safety
     ///
     /// It is the caller's responsibility to provide this method with `symbol`s
-    /// that are valid for the [Interner].
+    /// that are valid for the [`Interner`].
     pub unsafe fn get_hash_unchecked(&self, symbol: S) -> u64 {
         // SAFETY: The function is marked unsafe so that the caller guarantees
         //         that required invariants are checked.

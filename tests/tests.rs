@@ -391,7 +391,7 @@ fn shrink_to_fit_works() {
 }
 
 #[test]
-fn hashes_are_correct() {
+fn correct_hashes() {
     fn make_hash(build_hasher: impl BuildHasher, s: &str) -> u64 {
         let mut hasher = build_hasher.build_hasher();
         s.hash(&mut hasher);
@@ -412,7 +412,7 @@ fn hashes_are_correct() {
 
 // FxHash isn't randomly seeded, so even with different [BuildHasher]'s the hashes should be the same.
 #[test]
-fn fxhashes_are_correct() {
+fn correct_fxhashes() {
     fn make_fxhash(s: &str) -> u64 {
         let mut hasher = FxHasher::default();
         s.hash(&mut hasher);
@@ -428,5 +428,45 @@ fn fxhashes_are_correct() {
         assert_eq!(expected_hash, hash);
         assert_eq!(expected_hash, interner.get_hash(sym).unwrap());
         assert_eq!(expected_hash, unsafe { interner.get_hash_unchecked(sym) });
+    }
+}
+
+#[test]
+fn manual_hashmap() {
+    let strings = (1..1000).map(|n| format!("string {n}")).collect::<Vec<_>>();
+
+    let build_hasher = DefaultHashBuilder::default();
+
+    let mut interner = StringInterner::with_hasher(build_hasher);
+
+    let symbols = strings
+        .iter()
+        .map(|s| interner.intern(s))
+        .collect::<Vec<_>>();
+
+    let mut hashmap = hashbrown::HashMap::<Box<str>, usize, _>::with_hasher(build_hasher);
+
+    for (i, sym) in symbols.iter().enumerate() {
+        let hash = interner.get_hash(*sym).unwrap();
+        let s = interner.resolve(*sym).unwrap();
+
+        hashmap
+            .raw_entry_mut()
+            .from_key_hashed_nocheck(hash, s)
+            .insert(s.into(), i);
+    }
+
+    for (i, sym) in symbols.iter().enumerate() {
+        let hash = interner.get_hash(*sym).unwrap();
+        let s = interner.resolve(*sym).unwrap();
+
+        let (k, v) = match hashmap.raw_entry_mut().from_key_hashed_nocheck(hash, s) {
+            hashbrown::hash_map::RawEntryMut::Occupied(entry) => entry.into_key_value(),
+            hashbrown::hash_map::RawEntryMut::Vacant(_) => panic!(),
+        };
+
+        assert_eq!(k.as_ref(), s);
+        assert_eq!(k.as_ref(), strings[*v]);
+        assert_eq!(*v, i);
     }
 }

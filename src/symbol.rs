@@ -75,7 +75,7 @@ macro_rules! gen_symbol_for {
         impl Symbol for $name {
             #[inline]
             fn try_from_usize(index: usize) -> Option<Self> {
-                Self::new(index as $base_ty)
+                <$base_ty>::try_from(index).ok().and_then(Self::new)
             }
 
             #[inline]
@@ -107,7 +107,6 @@ gen_symbol_for!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::mem::size_of;
 
     #[test]
     fn same_size_as_u32() {
@@ -137,7 +136,11 @@ mod tests {
             })
         );
         assert_eq!(SymbolU16::try_from_usize(u16::MAX as usize), None);
+        assert_eq!(SymbolU16::try_from_usize(u16::MAX as usize + 1), None);
+        assert_eq!(SymbolU16::try_from_usize(u16::MAX as usize + 123456), None);
         assert_eq!(SymbolU16::try_from_usize(usize::MAX), None);
+        assert_eq!(SymbolU16::try_from_usize(usize::MAX - 1), None);
+        assert_eq!(SymbolU16::try_from_usize(usize::MAX - 123456), None);
     }
 
     macro_rules! gen_test_for {

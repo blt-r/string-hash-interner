@@ -25,13 +25,6 @@ impl<I: Intern + ?Sized, S> Debug for StringBackend<I, S> {
     }
 }
 
-/// Represents a `[from, to)` index into the `StringBackend` buffer.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-struct Span {
-    from: usize,
-    to: usize,
-}
-
 impl<I: Intern + ?Sized, S> Clone for StringBackend<I, S> {
     fn clone(&self) -> Self {
         Self {
@@ -59,8 +52,8 @@ impl<I: Intern + ?Sized, S: Symbol> StringBackend<I, S> {
     /// # Safety
     ///
     /// Span must be valid within the [Self::buffer]
-    unsafe fn span_to_str(&self, span: Span) -> &I {
-        unsafe { I::from_bytes(&self.buffer[span.from..span.to]) }
+    unsafe fn span_to_str(&self, from: usize, to: usize) -> &I {
+        unsafe { I::from_bytes(&self.buffer[from..to]) }
     }
 
     #[cfg_attr(feature = "inline-more", inline)]
@@ -98,7 +91,7 @@ impl<I: Intern + ?Sized, S: Symbol> StringBackend<I, S> {
             .unwrap_or(0);
 
         // SAFETY: This span is guaranteed to be valid
-        unsafe { Some(self.span_to_str(Span { from, to })) }
+        unsafe { Some(self.span_to_str(from, to)) }
     }
 
     pub(crate) fn shrink_to_fit(&mut self) {
@@ -119,7 +112,7 @@ impl<I: Intern + ?Sized, S: Symbol> StringBackend<I, S> {
             .unwrap_or(0);
 
         // SAFETY: This span is guaranteed to be valid
-        unsafe { self.span_to_str(Span { from, to }) }
+        unsafe { self.span_to_str(from, to) }
     }
 
     pub fn get_hash(&self, symbol: S) -> Option<u64> {
@@ -185,7 +178,7 @@ impl<'a, I: Intern + ?Sized, S: Symbol> Iterator for IterWithHashes<'a, I, S> {
         let from = core::mem::replace(&mut self.start, to);
 
         // SAFETY: This span is guaranteed to be valid
-        let string = unsafe { self.backend.span_to_str(Span { from, to }) };
+        let string = unsafe { self.backend.span_to_str(from, to) };
 
         Some((expect_valid_symbol(id), string, hash))
     }

@@ -2,7 +2,7 @@
 
 A fork of [robbepop/string-interner](https://github.com/robbepop/string-interner).
 
-The main point of this fork is that the hashes of the strings interned are cached, 
+The main point of this fork is that now the hashes of the strings interned are cached
 and can be cheaply looked up with `Interner::get_hash` and `Interner::get_hash_unchecked`.
 
 I only implemented this for the "String Backend", as that's the only backend I need.

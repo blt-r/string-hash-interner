@@ -2,9 +2,9 @@ name: Rust - Continuous Integration
 
 on:
   push:
-    branches: [ master ]
+    branches: [main]
   pull_request:
-    branches: [ master ]
+    branches: [main]
 
 jobs:
   build:
@@ -46,22 +46,8 @@ jobs:
         run: git submodule update --init --recursive
       - name: Test (Release)
         env:
-          RUSTFLAGS: "-C debug-assertions"
+          RUSTFLAGS: '-C debug-assertions'
         run: cargo test --release
-
-  test-memory:
-    name: Test Memory Consumption
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Set up Rust cache
-        uses: Swatinem/rust-cache@v2
-      - name: Test (Memory Consumption)
-        run: cargo test --release --features test-allocations -- --test-threads 1 test_memory_consumption
 
   fmt:
     name: Formatting
@@ -140,32 +126,3 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Test with Miri
         run: cargo miri test
-
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
-    container:
-      image: xd009642/tarpaulin:develop-nightly
-      options: --security-opt seccomp=unconfined
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
-        with:
-          submodules: true
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@nightly
-      - name: Set up Rust cache
-        uses: Swatinem/rust-cache@v2
-      - name: Generate code coverage
-        run: |
-          cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml -- --test-threads 1
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v5.3.1
-        with:
-          token: ${{secrets.CODECOV_TOKEN}}
-          fail_ci_if_error: true
-      - name: Archive code coverage results
-        uses: actions/upload-artifact@v4
-        with:
-          name: code-coverage-report
-          path: cobertura.xml

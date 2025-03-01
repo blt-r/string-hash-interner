@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.20.0
+
+Fork the crate and rename it to `string-hash-interner`
+
 ## 0.19.0 - 2025/02/11
 
 ## Fixed

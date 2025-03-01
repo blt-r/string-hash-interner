@@ -1,5 +1,4 @@
 #![no_std]
-#![doc(html_root_url = "https://docs.rs/crate/string-interner/0.18.0")]
 #![warn(unsafe_op_in_unsafe_fn, clippy::redundant_closure_for_method_calls)]
 
 //! Caches strings efficiently, with minimal memory footprint and associates them with unique symbols.
@@ -9,7 +8,7 @@
 //!
 //! ```
 //! // An interner with default symbol type and hasher
-//! use string_interner::DefaultStringInterner;
+//! use string_hash_interner::DefaultStringInterner;
 //!
 //! let mut interner = DefaultStringInterner::default();
 //! let sym0 = interner.intern("Elephant");
@@ -25,7 +24,7 @@
 //! ### Example: Creation by `FromIterator`
 //!
 //! ```
-//! # use string_interner::DefaultStringInterner;
+//! # use string_hash_interner::DefaultStringInterner;
 //! let interner = ["Elephant", "Tiger", "Horse", "Tiger"]
 //!     .into_iter()
 //!     .collect::<DefaultStringInterner>();
@@ -34,7 +33,7 @@
 //! ### Example: Look-up
 //!
 //! ```
-//! # use string_interner::DefaultStringInterner;
+//! # use string_hash_interner::DefaultStringInterner;
 //! let mut interner = DefaultStringInterner::default();
 //! let sym = interner.intern("Banana");
 //! assert_eq!(interner.resolve(sym), Some("Banana"));
@@ -43,7 +42,7 @@
 //! ### Example: Iteration
 //!
 //! ```
-//! # use string_interner::{DefaultStringInterner, Symbol};
+//! # use string_hash_interner::{DefaultStringInterner, Symbol};
 //! let interner = DefaultStringInterner::from_iter(["Earth", "Water", "Fire", "Air"]);
 //! for (sym, str) in &interner {
 //!     println!("{} = {}", sym.to_usize(), str);
@@ -53,8 +52,8 @@
 //! ### Example: Use different symbols and hashers
 //!
 //! ```
-//! # use string_interner::StringInterner;
-//! use string_interner::symbol::SymbolU16;
+//! # use string_hash_interner::StringInterner;
+//! use string_hash_interner::symbol::SymbolU16;
 //! use fxhash::FxBuildHasher;
 //! let mut interner = StringInterner::<SymbolU16, FxBuildHasher>::new();
 //! let sym = interner.intern("Fire Fox");
@@ -65,7 +64,7 @@
 //! ### Example: Intern different types of strings
 //!
 //! ```
-//! use string_interner::Interner;
+//! use string_hash_interner::Interner;
 //! use std::ffi::CStr;
 //!
 //! let strings = <Interner<CStr>>::from_iter([c"Earth", c"Water", c"Fire", c"Air"]);
@@ -78,8 +77,8 @@
 //! ### Example: Use cached hashes for faster hashmap lookups
 //!
 //! ```
-//! # use string_interner::DefaultStringInterner;
-//! # use string_interner::DefaultHashBuilder;
+//! # use string_hash_interner::DefaultStringInterner;
+//! # use string_hash_interner::DefaultHashBuilder;
 //! # use hashbrown::hash_map::RawEntryMut;
 //! // `DefaultHashBuilder` uses random state, so we need to use
 //! // the same instance in order for hashes to match.
@@ -109,8 +108,8 @@
 //! ### Example: Hashmap with only interned strings
 //!
 //! ```
-//! # use string_interner::symbol::DefaultSymbol;
-//! # use string_interner::DefaultStringInterner;
+//! # use string_hash_interner::symbol::DefaultSymbol;
+//! # use string_hash_interner::DefaultStringInterner;
 //! # use hashbrown::hash_map::RawEntryMut;
 //! let mut interner = DefaultStringInterner::default();
 //!

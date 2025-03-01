@@ -1,4 +1,4 @@
-use string_interner::{DefaultSymbol, StringInterner};
+use string_hash_interner::{DefaultSymbol, StringInterner};
 
 /// Alphabet containing all characters that may be put into a benchmark string.
 const ALPHABET: [u8; 64] = [

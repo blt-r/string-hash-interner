@@ -1,7 +1,7 @@
 use std::hash::{BuildHasher, Hash, Hasher};
 
 use fxhash::{FxBuildHasher, FxHasher};
-use string_interner::{
+use string_hash_interner::{
     DefaultHashBuilder, DefaultStringInterner as StringInterner, DefaultSymbol, Symbol,
 };
 
@@ -244,7 +244,7 @@ fn correct_fxhashes() {
         hasher.finish()
     }
 
-    let mut interner: string_interner::StringInterner<DefaultSymbol, FxBuildHasher> =
+    let mut interner: string_hash_interner::StringInterner<DefaultSymbol, FxBuildHasher> =
         Default::default();
 
     for s in ["aa", "bb", "cc", "dd", "ee", "ff"].iter().copied() {
@@ -326,7 +326,7 @@ mod different_strings {
     };
 
     use hashbrown::DefaultHashBuilder;
-    use string_interner::{Intern, Interner};
+    use string_hash_interner::{Intern, Interner};
 
     trait TestString: Intern + ToOwned + AsRef<Self> {
         fn make(s: &str) -> Self::Owned;
